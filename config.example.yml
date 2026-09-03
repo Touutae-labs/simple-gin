@@ -1,0 +1,17 @@
+# Copy to config.yml (or set APP_CONFIG to a custom path) and edit values.
+
+server:
+  port: "8080"
+  max_payload_size_kb: 4096
+  timeout_seconds: 30
+  base_url: "http://localhost:8080"
+
+database:
+  host: "localhost"
+  port: 5432
+  user: "postgres"
+  password: "postgres"
+  dbname: "simple_gin"
+  sslmode: "disable"
+  # Set to "" to skip auto-migrate on startup (use `make migrate` instead).
+  auto_migrate: true

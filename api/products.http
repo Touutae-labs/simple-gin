@@ -1,0 +1,58 @@
+# Open this file in VS Code with the REST Client extension
+# (humao.rest-client) and click "Send Request" above each block.
+#
+# Swagger UI lives at:
+#   http://localhost:8080/api-docs/index.html
+# OpenAPI JSON:
+#   http://localhost:8080/api-docs/doc.json
+
+@host = http://localhost:8080
+
+### Health check
+GET {{host}}/healthz
+
+### 1) Create a product
+POST {{host}}/product
+Content-Type: application/json
+
+{
+  "name": "Espresso Beans 1kg",
+  "description": "Single-origin Ethiopian roast",
+  "sale_price": 24.50,
+  "price": 29.90
+}
+
+### 2) Create a product without optional fields
+POST {{host}}/product
+Content-Type: application/json
+
+{
+  "name": "Plain Mug",
+  "price": 9.99
+}
+
+### 3) Patch a product — change only the price
+# Replace the id with a real one from #1.
+PATCH {{host}}/product/11111111-1111-1111-1111-111111111111
+Content-Type: application/json
+
+{
+  "price": 31.50
+}
+
+### 4) Patch a product — null out description and sale_price
+PATCH {{host}}/product/11111111-1111-1111-1111-111111111111
+Content-Type: application/json
+
+{
+  "description": null,
+  "sale_price": null
+}
+
+### 5) Patch a product — invalid (negative price)
+PATCH {{host}}/product/11111111-1111-1111-1111-111111111111
+Content-Type: application/json
+
+{
+  "price": -1
+}

@@ -1,0 +1,55 @@
+version: "3.9"
+
+# docker-compose for local development & test.
+#
+# Two databases:
+#   simple_gin       — used by `make dev` and the running service
+#   simple_gin_test  — used by the integration / component tests
+#
+# Bring everything up:
+#   docker compose up -d
+#   make migrate
+#   make seed
+#   make dev
+#
+# Tear everything down (drops volumes):
+#   docker compose down -v
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: simple-gin-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: simple_gin
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./internal/migrations/sql:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d simple_gin"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  postgres_test:
+    image: postgres:16-alpine
+    container_name: simple-gin-postgres-test
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: simple_gin_test
+    ports:
+      - "5433:5432"
+    tmpfs:
+      - /var/lib/postgresql/data  # tests don't need persistence
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d simple_gin_test -p 5432"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  pgdata:
