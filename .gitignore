@@ -27,6 +27,17 @@ go.work.sum
 # env file
 .env
 
+# macOS metadata
+.DS_Store
+
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Generated files
+docs/docs.go
+docs/swagger.json
+docs/swagger.yaml
+
+# Local config overrides
+config.local.yml

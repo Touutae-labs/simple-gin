@@ -1,16 +1,17 @@
 # simple-gin smoke test. nvim + kulala.nvim.
 # {{host}} from @host below. <Space>ra sends all, <Space>rr sends one.
+# Captures use a post-request script (> {% %}) which stores the id
+# in client.global under the name "product_id". Later blocks read
+# it back with {{product_id}}.
 
 @host = http://localhost:8080
 
 ### Health check
 GET {{host}}/healthz
 
-### 1) Create a product — captures {{product_id}} from the response
+### 1) Create a product — captures {{product_id}} from data.data1
 POST {{host}}/product
 Content-Type: application/json
-
-# @product_id = response.body.data.data1
 
 {
   "name": "Espresso Beans 1kg",
@@ -19,21 +20,27 @@ Content-Type: application/json
   "price": 29.90
 }
 
-### 2) Create a minimal product — overwrites {{product_id}} with this one
+> {%
+  client.global.set("product_id", response.body.data.data1);
+%}
+
+### 2) Create a minimal product — overwrites {{product_id}} with the new id
 POST {{host}}/product
 Content-Type: application/json
-
-# @product_id = response.body.data.data1
 
 {
   "name": "Plain Mug",
   "price": 9.99
 }
 
+> {%
+  client.global.set("product_id", response.body.data.data1);
+%}
+
 ### 3) List all products (sanity check the DB has data)
 GET {{host}}/product
 
-### 4) Get by id — {{product_id}} filled automatically from #2
+### 4) Get by id — {{product_id}} from #2 fills in
 GET {{host}}/product/{{product_id}}
 
 ### 5) Patch by id — change only the price
