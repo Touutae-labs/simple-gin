@@ -16,5 +16,6 @@ var ErrNotFound = errors.New("product not found")
 type Repository interface {
 	Create(ctx context.Context, in models.CreateInput) (string, error)
 	GetByID(ctx context.Context, id string) (*models.Product, error)
+	List(ctx context.Context) ([]models.Product, error)
 	Patch(ctx context.Context, id string, in models.PatchInput) (*models.Product, error)
 }

@@ -13,6 +13,8 @@ import (
 // delegates persistence to the repository port.
 type Service interface {
 	Create(ctx context.Context, in models.CreateInput) (models.Result, *models.Error)
+	Get(ctx context.Context, id string) (*models.Product, *models.Error)
+	List(ctx context.Context) ([]models.Product, *models.Error)
 	Patch(ctx context.Context, id string, in models.PatchInput) (models.Result, *models.Error)
 }
 
@@ -41,6 +43,37 @@ func (s *serviceImpl) Create(ctx context.Context, in models.CreateInput) (models
 		}
 	}
 	return models.Result{ProductID: id, Name: in.Name}, nil
+}
+
+func (s *serviceImpl) Get(ctx context.Context, id string) (*models.Product, *models.Error) {
+	p, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return nil, &models.Error{
+				Code:    models.CodeProductNotFound,
+				Field:   "id",
+				Message: fmt.Sprintf("product %s not found", id),
+			}
+		}
+		slog.ErrorContext(ctx, "product.get.repo_error", "id", id, "err", err.Error())
+		return nil, &models.Error{
+			Code:    models.CodeRepositoryFailure,
+			Message: "failed to fetch product",
+		}
+	}
+	return p, nil
+}
+
+func (s *serviceImpl) List(ctx context.Context) ([]models.Product, *models.Error) {
+	items, err := s.repo.List(ctx)
+	if err != nil {
+		slog.ErrorContext(ctx, "product.list.repo_error", "err", err.Error())
+		return nil, &models.Error{
+			Code:    models.CodeRepositoryFailure,
+			Message: "failed to list products",
+		}
+	}
+	return items, nil
 }
 
 func (s *serviceImpl) Patch(ctx context.Context, id string, in models.PatchInput) (models.Result, *models.Error) {

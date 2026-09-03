@@ -57,6 +57,18 @@ func (r *Product) GetByID(ctx context.Context, id string) (*models.Product, erro
 	return toDomain(row), nil
 }
 
+func (r *Product) List(ctx context.Context) ([]models.Product, error) {
+	var rows []ProductModel
+	if err := r.db.WithContext(ctx).Order("created_at asc").Find(&rows).Error; err != nil {
+		return nil, fmt.Errorf("repositories.Product: list: %w", err)
+	}
+	out := make([]models.Product, len(rows))
+	for i, row := range rows {
+		out[i] = *toDomain(row)
+	}
+	return out, nil
+}
+
 func (r *Product) Patch(ctx context.Context, id string, in models.PatchInput) (*models.Product, error) {
 	updates := map[string]any{
 		"updated_at": time.Now().UTC(),

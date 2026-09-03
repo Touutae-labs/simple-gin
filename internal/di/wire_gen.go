@@ -16,10 +16,6 @@ import (
 
 // Injectors from wire.go:
 
-// Initialize is the build spec. The function body is irrelevant; wire
-// replaces it with generated constructor calls. The generated function
-// with the same name lives in wire_gen.go (under the !wireinject tag)
-// and is what cmd/server and the component test actually link against.
 func Initialize(cfg configurations.Config, title server.ServerTitle, version server.ServerVersion) (*Application, func(), error) {
 	serverConfig := cfg.Server
 	serverServerConfig := server.BuildServerConfig(serverConfig, title, version)
@@ -50,10 +46,6 @@ var serverSet = wire.NewSet(wire.FieldsOf(new(configurations.Config), "Server"),
 
 var controllersSet = wire.NewSet(controllers.NewHealthController, controllers.NewProductController, controllers.NewControllers)
 
-// productSet declares the two constructors that the product domain
-// needs to participate in the graph: the rule module and the
-// orchestrator. Wire resolves the Repository port via
-// provideProductRepository in the next set.
 var productSet = wire.NewSet(product.New, product.NewService)
 
 var repositorySet = wire.NewSet(

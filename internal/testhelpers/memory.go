@@ -66,6 +66,19 @@ func (m *ProductMemory) GetByID(_ context.Context, id string) (*models.Product, 
 	return &cp, nil
 }
 
+func (m *ProductMemory) List(_ context.Context) ([]models.Product, error) {
+	if err := m.fail(); err != nil {
+		return nil, err
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make([]models.Product, 0, len(m.products))
+	for _, p := range m.products {
+		out = append(out, p)
+	}
+	return out, nil
+}
+
 func (m *ProductMemory) Patch(_ context.Context, id string, in models.PatchInput) (*models.Product, error) {
 	if err := m.fail(); err != nil {
 		return nil, err

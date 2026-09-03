@@ -1,18 +1,16 @@
-version: "3.9"
-
-# docker-compose for local development & test.
+# docker-compose for local development.
 #
-# Two databases:
-#   simple_gin       — used by `make dev` and the running service
-#   simple_gin_test  — used by the integration / component tests
+#   postgres       — used by `make dev` and the running service  (port 5432)
+#   postgres_test  — used by the integration / component tests (port 5433)
+#   pgweb          — Postgres admin UI, single binary                (port 8081)
 #
 # Bring everything up:
 #   docker compose up -d
-#   make migrate
-#   make seed
 #   make dev
+#   open http://localhost:8080      # service
+#   open http://localhost:8081      # pgweb (auto-connected to `postgres`)
 #
-# Tear everything down (drops volumes):
+# Tear everything down (drops the data volume):
 #   docker compose down -v
 
 services:
@@ -27,7 +25,6 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./internal/migrations/sql:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d simple_gin"]
       interval: 2s
@@ -44,12 +41,25 @@ services:
     ports:
       - "5433:5432"
     tmpfs:
-      - /var/lib/postgresql/data  # tests don't need persistence
+      - /var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d simple_gin_test -p 5432"]
       interval: 2s
       timeout: 3s
       retries: 30
+
+  pgweb:
+    image: ghcr.io/sosedoff/pgweb:latest
+    container_name: simple-gin-pgweb
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGWEB_DATABASE_URL: "postgres://postgres:postgres@postgres:5432/simple_gin?sslmode=disable"
+      PGWEB_LISTEN_ADDR: "0.0.0.0:8081"
+      PGWEB_DISABLE_PSQL: "true"   # run queries from the browser, not psql shell
+    ports:
+      - "8081:8081"
 
 volumes:
   pgdata:

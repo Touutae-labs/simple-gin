@@ -10,7 +10,7 @@
 package server
 
 import (
-	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -57,7 +57,7 @@ func NewServer(cfg ServerConfig, c *controllers.Controllers) *Server {
 
 	gin.SetMode(gin.ReleaseMode)
 	app := gin.New()
-	app.Use(gin.Recovery(), requestLogger())
+	app.Use(slogRequestLogger(), gin.Recovery())
 	app.MaxMultipartMemory = int64(bodyLimit)
 
 	app.NoRoute(func(c *gin.Context) {
@@ -84,16 +84,29 @@ func (s *Server) mountSwagger() {
 
 func (s *Server) Start() error {
 	addr := ":" + s.Config.Port
-	fmt.Printf("listening on %s (docs: %s/api-docs/index.html)\n", addr, s.Config.BaseURL)
+	slog.Info("server.start", slog.String("addr", addr), slog.String("docs", s.Config.BaseURL+"/api-docs/index.html"))
 	return s.App.Run(addr)
 }
 
-func requestLogger() gin.HandlerFunc {
+// slogRequestLogger emits one structured log line per request with
+// method, path, status, duration, and bytes written.
+func slogRequestLogger() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		c.Next()
-		fmt.Printf("method=%s path=%s status=%d duration=%s\n",
-			c.Request.Method, c.Request.URL.Path, c.Writer.Status(), time.Since(start))
+		level := slog.LevelInfo
+		if c.Writer.Status() >= 500 {
+			level = slog.LevelError
+		} else if c.Writer.Status() >= 400 {
+			level = slog.LevelWarn
+		}
+		slog.LogAttrs(c.Request.Context(), level, "http",
+			slog.String("method", c.Request.Method),
+			slog.String("path", c.Request.URL.Path),
+			slog.Int("status", c.Writer.Status()),
+			slog.Duration("duration", time.Since(start)),
+			slog.Int("size", c.Writer.Size()),
+		)
 	}
 }
 

@@ -30,12 +30,75 @@ type PatchRequest struct {
 	Price       *float64 `json:"price,omitempty" example:"31.50"`
 }
 
+// ProductResponse is the JSON shape returned by GET /product and
+// GET /product/{id}. Lives in the controller (not the domain) so the
+// domain types stay clean of JSON tags.
+type ProductResponse struct {
+	ID          string   `json:"id" example:"9d95d864-87f7-4620-a3b5-b185a1536926"`
+	Name        string   `json:"name" example:"Espresso Beans"`
+	Description *string  `json:"description,omitempty" example:"Single-origin Ethiopian"`
+	SalePrice   *float64 `json:"sale_price,omitempty" example:"24.50"`
+	Price       float64  `json:"price" example:"29.90"`
+}
+
+func toResponse(p *models.Product) ProductResponse {
+	r := ProductResponse{ID: p.ID, Name: p.Name, Description: p.Description, Price: p.Price.InexactFloat64()}
+	if p.SalePrice != nil {
+		v := p.SalePrice.InexactFloat64()
+		r.SalePrice = &v
+	}
+	return r
+}
+
 type ProductController struct {
 	svc product.Service
 }
 
 func NewProductController(svc product.Service) *ProductController {
 	return &ProductController{svc: svc}
+}
+
+// List godoc
+// @Summary  List products
+// @Tags     Products
+// @Produce  json
+// @Success  200  {array}  ProductResponse
+// @Failure  500  {object}  errorPayload
+// @Router   /product [get]
+func (c *ProductController) List(ctx *gin.Context) {
+	items, perr := c.svc.List(ctx.Request.Context())
+	if perr != nil {
+		c.respondError(ctx, perr)
+		return
+	}
+	out := make([]ProductResponse, len(items))
+	for i := range items {
+		out[i] = toResponse(&items[i])
+	}
+	ctx.JSON(http.StatusOK, out)
+}
+
+// Get godoc
+// @Summary  Get a product by id
+// @Tags     Products
+// @Produce  json
+// @Param    id  path  string  true  "Product id (UUID)"
+// @Success  200  {object}  ProductResponse
+// @Failure  404  {object}  errorPayload
+// @Failure  500  {object}  errorPayload
+// @Router   /product/{id} [get]
+func (c *ProductController) Get(ctx *gin.Context) {
+	id := ctx.Param("id")
+	if id == "" {
+		writeError(ctx, http.StatusBadRequest, "INVALID_ID")
+		return
+	}
+	p, perr := c.svc.Get(ctx.Request.Context(), id)
+	if perr != nil {
+		c.respondError(ctx, perr)
+		return
+	}
+	ctx.JSON(http.StatusOK, toResponse(p))
 }
 
 // Create godoc
