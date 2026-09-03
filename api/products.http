@@ -1,17 +1,36 @@
-# Open this file in VS Code with the REST Client extension
-# (humao.rest-client) and click "Send Request" above each block.
+# Open in VS Code with the REST Client extension (humao.rest-client).
+# Click "Send Request" above any block to run it.
 #
-# Swagger UI lives at:
-#   http://localhost:8080/api-docs/index.html
-# OpenAPI JSON:
-#   http://localhost:8080/api-docs/doc.json
+# ══════════════════════════════════════════════════════════════════════
+#  If the response panel only shows the raw text and no JSON tab,
+#  your REST Client is too old. Update it:
+#    Ctrl+Shift+P → "Extensions: Show Enabled Extensions" → REST Client → Update
+#  Or just use the right-click menu on the response body → "Format JSON".
+# ══════════════════════════════════════════════════════════════════════
+#
+# Vim tip: if you want pretty JSON in vim, run:
+#   :%!python -m json.tool     (if you have python)
+#   :%!jq .                    (if you have jq)
+#
+# ══════════════════════════════════════════════════════════════════════
+#  If the PATCH examples 404, the placeholder UUID doesn't exist in
+#  your DB. Two fixes (pick one):
+#
+#    (a) Right-click → "Send All Requests in File" — runs CREATE
+#        first, then the chained PATCH picks up the real id.
+#        Requires REST Client >= 0.24 (2021+) for response chaining.
+#
+#    (b) Run the CREATE request (#1) first, copy the "data1" UUID
+#        from the response, paste it over the placeholder below.
+#        Works in any version of REST Client.
+# ══════════════════════════════════════════════════════════════════════
 
 @host = http://localhost:8080
 
 ### Health check
 GET {{host}}/healthz
 
-### 1) Create a product
+### 1) Create a product — the response is the source of the id for #2-#5
 POST {{host}}/product
 Content-Type: application/json
 
@@ -22,7 +41,7 @@ Content-Type: application/json
   "price": 29.90
 }
 
-### 2) Create a product without optional fields
+### 2) Create a minimal product (no optional fields) — for testing the "patch with nulls" case
 POST {{host}}/product
 Content-Type: application/json
 
@@ -31,17 +50,22 @@ Content-Type: application/json
   "price": 9.99
 }
 
-### 3) Patch a product — change only the price
-# Replace the id with a real one from #1.
-PATCH {{host}}/product/11111111-1111-1111-1111-111111111111
+### 3) List all products (sanity check the DB has data)
+GET {{host}}/product
+
+### 4) Get by id — replace PASTE-UUID-HERE with a real one (copy from #1 or #3)
+GET {{host}}/product/PASTE-UUID-HERE
+
+### 5) Patch by id — change only the price
+PATCH {{host}}/product/PASTE-UUID-HERE
 Content-Type: application/json
 
 {
   "price": 31.50
 }
 
-### 4) Patch a product — null out description and sale_price
-PATCH {{host}}/product/11111111-1111-1111-1111-111111111111
+### 6) Patch by id — null out description and sale_price (explicit clear)
+PATCH {{host}}/product/PASTE-UUID-HERE
 Content-Type: application/json
 
 {
@@ -49,10 +73,18 @@ Content-Type: application/json
   "sale_price": null
 }
 
-### 5) Patch a product — invalid (negative price)
-PATCH {{host}}/product/11111111-1111-1111-1111-111111111111
+### 7) Patch by id — invalid (negative price), expect 422 INVALID_PRICE
+PATCH {{host}}/product/PASTE-UUID-HERE
 Content-Type: application/json
 
 {
   "price": -1
+}
+
+### 8) Patch a non-existent id, expect 404 PRODUCT_NOT_FOUND
+PATCH {{host}}/product/00000000-0000-0000-0000-000000000000
+Content-Type: application/json
+
+{
+  "price": 1
 }
