@@ -1,28 +1,26 @@
-# Open in VS Code with the REST Client extension (humao.rest-client).
-# Click "Send Request" above any block to run it.
+# Open this file in Neovim (>= 0.9) with kulala.nvim installed.
+# LazyVim / lazy.nvim will load it automatically for *.http and *.rest.
+#
+# Keymaps inside this file (buffer-local, leader = <Space> by default):
+#   <Space>Rs  send the request the cursor is on
+#   <Space>Ra  send every request in this file, top to bottom
+#   <Space>Ro  open the response scratchpad
+#
+# If a keymap does nothing, check :messages — usually it means the
+# server is not running. Start it with:  make run
 #
 # ══════════════════════════════════════════════════════════════════════
-#  If the response panel only shows the raw text and no JSON tab,
-#  your REST Client is too old. Update it:
-#    Ctrl+Shift+P → "Extensions: Show Enabled Extensions" → REST Client → Update
-#  Or just use the right-click menu on the response body → "Format JSON".
-# ══════════════════════════════════════════════════════════════════════
+# Workflow for the PATCH and GET-by-id examples:
 #
-# Vim tip: if you want pretty JSON in vim, run:
-#   :%!python -m json.tool     (if you have python)
-#   :%!jq .                    (if you have jq)
+#   1) Press <Space>Ra once. The CREATE requests (#1, #2) write real
+#      rows; #3 (LIST) prints them with their ids.
+#   2) Open the response for #3, copy any "data1" UUID, paste it over
+#      the PASTE-UUID-HERE placeholder in #4–#7.
+#   3) Press <Space>Ra again (or <Space>Rs with the cursor on one
+#      block) to re-run with the real id.
 #
-# ══════════════════════════════════════════════════════════════════════
-#  If the PATCH examples 404, the placeholder UUID doesn't exist in
-#  your DB. Two fixes (pick one):
-#
-#    (a) Right-click → "Send All Requests in File" — runs CREATE
-#        first, then the chained PATCH picks up the real id.
-#        Requires REST Client >= 0.24 (2021+) for response chaining.
-#
-#    (b) Run the CREATE request (#1) first, copy the "data1" UUID
-#        from the response, paste it over the placeholder below.
-#        Works in any version of REST Client.
+# No response-variable chaining, no plugin lock-in, works in any
+# version of kulala.nvim.
 # ══════════════════════════════════════════════════════════════════════
 
 @host = http://localhost:8080
