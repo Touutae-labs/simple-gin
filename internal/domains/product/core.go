@@ -37,6 +37,7 @@ type Module interface {
 	ValidateListFilter(f *models.ListFilter) *models.Error
 }
 
+
 type moduleImpl struct{}
 
 func New() Module { return &moduleImpl{} }
@@ -45,14 +46,18 @@ func (m *moduleImpl) ValidateCreate(name string, description *string, price deci
 	if err := validateName(name); err != nil {
 		return err
 	}
+
 	if err := validateDescription(description); err != nil {
 		return err
 	}
+
 	if err := validatePrice(price); err != nil {
 		return err
 	}
+
 	return nil
 }
+
 
 func (m *moduleImpl) ValidatePatch(name *string, description *string, price *decimal.Decimal) *models.Error {
 	if name != nil {
@@ -60,18 +65,22 @@ func (m *moduleImpl) ValidatePatch(name *string, description *string, price *dec
 			return err
 		}
 	}
+
 	if description != nil {
 		if err := validateDescription(description); err != nil {
 			return err
 		}
 	}
+
 	if price != nil {
 		if err := validatePrice(*price); err != nil {
 			return err
 		}
 	}
+
 	return nil
 }
+
 
 // ValidateListFilter clamps the page size to [1, MaxListLimit] and
 // checks the price-range pair if both bounds are set. The cursor
@@ -82,6 +91,7 @@ func (m *moduleImpl) ValidateListFilter(f *models.ListFilter) *models.Error {
 	if f == nil {
 		return nil
 	}
+
 	if f.Limit < 0 {
 		return &models.Error{
 			Code:    models.CodeInvalidLimit,
@@ -89,6 +99,7 @@ func (m *moduleImpl) ValidateListFilter(f *models.ListFilter) *models.Error {
 			Message: "limit must be >= 0 (0 means default)",
 		}
 	}
+
 	if f.Limit > MaxListLimit {
 		return &models.Error{
 			Code:    models.CodeInvalidLimit,
@@ -96,6 +107,7 @@ func (m *moduleImpl) ValidateListFilter(f *models.ListFilter) *models.Error {
 			Message: fmt.Sprintf("limit must be at most %d, got %d", MaxListLimit, f.Limit),
 		}
 	}
+
 	if f.MinPrice != nil && f.MinPrice.IsNegative() {
 		return &models.Error{
 			Code:    models.CodeInvalidPriceRange,
@@ -103,6 +115,7 @@ func (m *moduleImpl) ValidateListFilter(f *models.ListFilter) *models.Error {
 			Message: fmt.Sprintf("min_price must be >= 0, got %s", f.MinPrice.String()),
 		}
 	}
+
 	if f.MaxPrice != nil && f.MaxPrice.IsNegative() {
 		return &models.Error{
 			Code:    models.CodeInvalidPriceRange,
@@ -110,6 +123,7 @@ func (m *moduleImpl) ValidateListFilter(f *models.ListFilter) *models.Error {
 			Message: fmt.Sprintf("max_price must be >= 0, got %s", f.MaxPrice.String()),
 		}
 	}
+
 	if f.MinPrice != nil && f.MaxPrice != nil && f.MinPrice.GreaterThan(*f.MaxPrice) {
 		return &models.Error{
 			Code:    models.CodeInvalidPriceRange,
@@ -117,8 +131,10 @@ func (m *moduleImpl) ValidateListFilter(f *models.ListFilter) *models.Error {
 			Message: fmt.Sprintf("min_price %s must be <= max_price %s", f.MinPrice.String(), f.MaxPrice.String()),
 		}
 	}
+
 	return nil
 }
+
 
 func validateName(name string) *models.Error {
 	trimmed := strings.TrimSpace(name)
@@ -129,6 +145,7 @@ func validateName(name string) *models.Error {
 			Message: "name is required",
 		}
 	}
+
 	if len(trimmed) > MaxNameLength {
 		return &models.Error{
 			Code:    models.CodeInvalidName,
@@ -136,13 +153,16 @@ func validateName(name string) *models.Error {
 			Message: fmt.Sprintf("name must be at most %d characters, got %d", MaxNameLength, len(trimmed)),
 		}
 	}
+
 	return nil
 }
+
 
 func validateDescription(d *string) *models.Error {
 	if d == nil {
 		return nil
 	}
+
 	if len(*d) > MaxDescriptionLength {
 		return &models.Error{
 			Code:    models.CodeInvalidDescription,
@@ -150,8 +170,10 @@ func validateDescription(d *string) *models.Error {
 			Message: fmt.Sprintf("description must be at most %d characters, got %d", MaxDescriptionLength, len(*d)),
 		}
 	}
+
 	return nil
 }
+
 
 func validatePrice(price decimal.Decimal) *models.Error {
 	if !price.IsPositive() {
@@ -161,6 +183,7 @@ func validatePrice(price decimal.Decimal) *models.Error {
 			Message: fmt.Sprintf("price must be positive, got %s", price.String()),
 		}
 	}
+
 	if price.GreaterThan(MaxPrice) {
 		return &models.Error{
 			Code:    models.CodePriceTooLarge,
@@ -168,5 +191,6 @@ func validatePrice(price decimal.Decimal) *models.Error {
 			Message: fmt.Sprintf("price %s exceeds maximum %s", price.String(), MaxPrice.String()),
 		}
 	}
+
 	return nil
 }

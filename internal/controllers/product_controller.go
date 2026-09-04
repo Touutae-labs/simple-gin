@@ -13,25 +13,6 @@ import (
 	"github.com/Touutae-labs/simple-gin/internal/models"
 )
 
-// CreateRequest is the POST /product body. price is required and is
-// accepted as a JSON number at the HTTP boundary; the controller
-// converts to shopspring/decimal before reaching the service.
-type CreateRequest struct {
-	Name        string   `json:"name" binding:"required" example:"Espresso Beans"`
-	Description *string  `json:"description" example:"Single-origin Ethiopian roast"`
-	SalePrice   *float64 `json:"sale_price" example:"24.50"`
-	Price       float64  `json:"price" binding:"required" example:"29.90"`
-}
-
-// PatchRequest is the PATCH /product/{id} body. All fields optional.
-// *string pointing to "" explicitly clears the field.
-type PatchRequest struct {
-	Name        *string  `json:"name,omitempty" example:"Updated name"`
-	Description *string  `json:"description,omitempty" example:"new description"`
-	SalePrice   *float64 `json:"sale_price,omitempty" example:"24.50"`
-	Price       *float64 `json:"price,omitempty" example:"31.50"`
-}
-
 // ProductResponse is the JSON shape returned by GET /product and
 // GET /product/{id}. Lives in the controller (not the domain) so the
 // domain types stay clean of JSON tags.
@@ -45,40 +26,46 @@ type ProductResponse struct {
 	UpdatedAt   string   `json:"updated_at" example:"2026-09-04T02:00:00Z"`
 }
 
-// ListResponse is the JSON shape returned by GET /product. Items
-// is the current page; NextCursor is "" when there are no more
-// pages. The list endpoint is the only one that returns a
-// paginated envelope; the others use the success envelope in
-// common.go.
+
+// ListResponse is the JSON shape returned by GET /product. NextCursor
+// is "" when there are no more pages.
 type ListResponse struct {
 	Items      []ProductResponse `json:"items"`
 	NextCursor string            `json:"next_cursor"`
 	Limit      int               `json:"limit"`
 }
 
-func toResponse(p *models.Product) ProductResponse {
-	r := ProductResponse{
-		ID:          p.ID,
-		Name:        p.Name,
-		Description: p.Description,
-		Price:       p.Price.InexactFloat64(),
-		CreatedAt:   p.CreatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
-		UpdatedAt:   p.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
-	}
-	if p.SalePrice != nil {
-		v := p.SalePrice.InexactFloat64()
-		r.SalePrice = &v
-	}
-	return r
+
+// CreateRequest is the POST /product body. price is required; the
+// controller converts the JSON number to shopspring/decimal before
+// the service sees it.
+type CreateRequest struct {
+	Name        string   `json:"name" binding:"required" example:"Espresso Beans"`
+	Description *string  `json:"description" example:"Single-origin Ethiopian roast"`
+	SalePrice   *float64 `json:"sale_price" example:"24.50"`
+	Price       float64  `json:"price" binding:"required" example:"29.90"`
 }
+
+
+// PatchRequest is the PATCH /product/{id} body. All fields optional.
+// *string pointing to "" explicitly clears the field.
+type PatchRequest struct {
+	Name        *string  `json:"name,omitempty" example:"Updated name"`
+	Description *string  `json:"description,omitempty" example:"new description"`
+	SalePrice   *float64 `json:"sale_price,omitempty" example:"24.50"`
+	Price       *float64 `json:"price,omitempty" example:"31.50"`
+}
+
 
 type ProductController struct {
 	svc product.Service
 }
 
+
 func NewProductController(svc product.Service) *ProductController {
 	return &ProductController{svc: svc}
 }
+
 
 // List godoc
 // @Summary  List products
@@ -99,72 +86,30 @@ func (c *ProductController) List(ctx *gin.Context) {
 		c.respondError(ctx, perr)
 		return
 	}
+
 	page, perr := c.svc.List(ctx.Request.Context(), filter)
 	if perr != nil {
 		c.respondError(ctx, perr)
 		return
 	}
+
 	out := ListResponse{
 		Items:      make([]ProductResponse, len(page.Items)),
 		NextCursor: page.NextCursor,
 		Limit:      product.DefaultListLimit,
 	}
+
 	if filter != nil && filter.Limit > 0 {
 		out.Limit = filter.Limit
 	}
+
 	for i := range page.Items {
 		out.Items[i] = toResponse(&page.Items[i])
 	}
+
 	ctx.JSON(http.StatusOK, out)
 }
 
-// parseListFilter reads ?cursor= ?limit= ?name= ?min_price= ?max_price=
-// and validates the shape. The service layer still validates the
-// business rules (price range, limit cap) — this only handles
-// parse errors. Returns the concrete *models.Error so callers can
-// pass it to respondError without a type assertion.
-func parseListFilter(ctx *gin.Context) (*models.ListFilter, *models.Error) {
-	f := &models.ListFilter{
-		Cursor: strings.TrimSpace(ctx.Query("cursor")),
-	}
-	if v := strings.TrimSpace(ctx.Query("limit")); v != "" {
-		n, err := strconv.Atoi(v)
-		if err != nil {
-			return nil, &models.Error{
-				Code:    models.CodeInvalidLimit,
-				Field:   "limit",
-				Message: "limit must be an integer",
-			}
-		}
-		f.Limit = n
-	}
-	if v := strings.TrimSpace(ctx.Query("name")); v != "" {
-		f.Name = v
-	}
-	if v := strings.TrimSpace(ctx.Query("min_price")); v != "" {
-		d, err := decimal.NewFromString(v)
-		if err != nil {
-			return nil, &models.Error{
-				Code:    models.CodeInvalidPriceRange,
-				Field:   "min_price",
-				Message: "min_price must be a decimal number",
-			}
-		}
-		f.MinPrice = &d
-	}
-	if v := strings.TrimSpace(ctx.Query("max_price")); v != "" {
-		d, err := decimal.NewFromString(v)
-		if err != nil {
-			return nil, &models.Error{
-				Code:    models.CodeInvalidPriceRange,
-				Field:   "max_price",
-				Message: "max_price must be a decimal number",
-			}
-		}
-		f.MaxPrice = &d
-	}
-	return f, nil
-}
 
 // Get godoc
 // @Summary  Get a product by id
@@ -181,13 +126,16 @@ func (c *ProductController) Get(ctx *gin.Context) {
 		writeError(ctx, http.StatusBadRequest, "INVALID_ID")
 		return
 	}
+
 	p, perr := c.svc.Get(ctx.Request.Context(), id)
 	if perr != nil {
 		c.respondError(ctx, perr)
 		return
 	}
+
 	ctx.JSON(http.StatusOK, toResponse(p))
 }
+
 
 // Create godoc
 // @Summary  Create a product
@@ -207,18 +155,21 @@ func (c *ProductController) Create(ctx *gin.Context) {
 		writeError(ctx, http.StatusBadRequest, "INVALID_BODY")
 		return
 	}
+
 	res, perr := c.svc.Create(ctx.Request.Context(), models.CreateInput{
 		Name:        req.Name,
 		Description: req.Description,
-		SalePrice:   floatToMoneyPtr(req.SalePrice),
+		SalePrice:   decimalPtr(req.SalePrice),
 		Price:       decimal.NewFromFloat(req.Price),
 	})
 	if perr != nil {
 		c.respondError(ctx, perr)
 		return
 	}
+
 	writeCreated(ctx, res.ProductID, res.Name)
 }
+
 
 // Patch godoc
 // @Summary  Update a product (partial)
@@ -239,31 +190,37 @@ func (c *ProductController) Patch(ctx *gin.Context) {
 		writeError(ctx, http.StatusBadRequest, "INVALID_ID")
 		return
 	}
+
 	var req PatchRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		slog.ErrorContext(ctx.Request.Context(), "product.patch.bind_error", "err", err.Error())
 		writeError(ctx, http.StatusBadRequest, "INVALID_BODY")
 		return
 	}
+
 	in := models.PatchInput{
 		Name:        req.Name,
 		Description: req.Description,
 	}
+
 	if req.SalePrice != nil {
 		d := decimal.NewFromFloat(*req.SalePrice)
 		in.SalePrice = &d
 	}
+
 	if req.Price != nil {
 		d := decimal.NewFromFloat(*req.Price)
 		in.Price = &d
 	}
-	_, perr := c.svc.Patch(ctx.Request.Context(), id, in)
-	if perr != nil {
+
+	if _, perr := c.svc.Patch(ctx.Request.Context(), id, in); perr != nil {
 		c.respondError(ctx, perr)
 		return
 	}
+
 	writeOK(ctx)
 }
+
 
 // Delete godoc
 // @Summary  Soft-delete a product
@@ -283,22 +240,92 @@ func (c *ProductController) Delete(ctx *gin.Context) {
 		writeError(ctx, http.StatusBadRequest, "INVALID_ID")
 		return
 	}
+
 	if perr := c.svc.Delete(ctx.Request.Context(), id); perr != nil {
 		c.respondError(ctx, perr)
 		return
 	}
+
 	ctx.Status(http.StatusNoContent)
 }
 
-func floatToMoneyPtr(f *float64) *decimal.Decimal {
+
+// ---- internal helpers ---------------------------------------------------
+
+func toResponse(p *models.Product) ProductResponse {
+	r := ProductResponse{
+		ID:          p.ID,
+		Name:        p.Name,
+		Description: p.Description,
+		Price:       p.Price.InexactFloat64(),
+		CreatedAt:   p.CreatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
+		UpdatedAt:   p.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
+	}
+
+	if p.SalePrice != nil {
+		v := p.SalePrice.InexactFloat64()
+		r.SalePrice = &v
+	}
+
+	return r
+}
+
+
+// parseListFilter reads ?cursor= ?limit= ?name= ?min_price= ?max_price=
+// and validates the shape. The service layer still validates the
+// business rules (price range, limit cap).
+func parseListFilter(ctx *gin.Context) (*models.ListFilter, *models.Error) {
+	f := &models.ListFilter{Cursor: strings.TrimSpace(ctx.Query("cursor"))}
+	if v := strings.TrimSpace(ctx.Query("limit")); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return nil, &models.Error{Code: models.CodeInvalidLimit, Field: "limit", Message: "limit must be an integer"}
+		}
+
+		f.Limit = n
+	}
+
+	if v := strings.TrimSpace(ctx.Query("name")); v != "" {
+		f.Name = v
+	}
+
+	if v := strings.TrimSpace(ctx.Query("min_price")); v != "" {
+		d, err := decimal.NewFromString(v)
+		if err != nil {
+			return nil, &models.Error{Code: models.CodeInvalidPriceRange, Field: "min_price", Message: "min_price must be a decimal number"}
+		}
+
+		f.MinPrice = &d
+	}
+
+	if v := strings.TrimSpace(ctx.Query("max_price")); v != "" {
+		d, err := decimal.NewFromString(v)
+		if err != nil {
+			return nil, &models.Error{Code: models.CodeInvalidPriceRange, Field: "max_price", Message: "max_price must be a decimal number"}
+		}
+
+		f.MaxPrice = &d
+	}
+
+	return f, nil
+}
+
+
+func decimalPtr(f *float64) *decimal.Decimal {
 	if f == nil {
 		return nil
 	}
+
 	d := decimal.NewFromFloat(*f)
 	return &d
 }
 
+
 // respondError maps a models.Error to an HTTP status + envelope.
+// The service layer already logged the underlying cause for 500s
+// (product.<op>.repo_error), so the controller only translates to
+// HTTP — no re-log. Bind errors (in Create/Patch) are logged at the
+// controller because they happen before the service ever sees them.
 func (c *ProductController) respondError(ctx *gin.Context, e *models.Error) {
 	status := http.StatusUnprocessableEntity
 	switch e.Code {
@@ -307,10 +334,11 @@ func (c *ProductController) respondError(ctx *gin.Context, e *models.Error) {
 	case models.CodeProductNotFound:
 		status = http.StatusNotFound
 	}
+
 	if status >= 500 {
-		slog.ErrorContext(ctx.Request.Context(), "product.controller_error", "code", e.Code, "field", e.Field, "message", e.Message)
 		writeServerError(ctx)
 		return
 	}
+
 	writeError(ctx, status, e.Code)
 }

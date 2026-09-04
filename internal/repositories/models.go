@@ -24,6 +24,7 @@ type ProductModel struct {
 	DeletedAt   *time.Time       `gorm:"column:deleted_at;index"`
 }
 
+
 func (ProductModel) TableName() string { return "products" }
 
 // AllModels returns every GORM model in the codebase. Used by

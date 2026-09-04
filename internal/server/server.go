@@ -17,7 +17,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -27,27 +26,26 @@ import (
 
 	"github.com/Touutae-labs/simple-gin/internal/configurations"
 	"github.com/Touutae-labs/simple-gin/internal/controllers"
-
-	_ "github.com/Touutae-labs/simple-gin/docs"
 )
 
 // ServerTitle and ServerVersion are exported so the cmd entry point
-// can pass them in without the server package reaching back into main.
+// can pass them in without server reaching back into main.
 type ServerTitle string
 type ServerVersion string
 
 // ServerConfig is the resolved engine config.
 type ServerConfig struct {
-	Title             ServerTitle
-	Version           ServerVersion
-	Port              string
-	MaxPayloadSizeKB  int
-	TimeoutSeconds    int
-	BaseURL           string
+	Title              ServerTitle
+	Version            ServerVersion
+	Port               string
+	MaxPayloadSizeKB   int
+	TimeoutSeconds     int
+	BaseURL            string
 	ShutdownTimeoutSec int
 	CORSAllowedOrigins []string
-	MetricsEnabled    bool
+	MetricsEnabled     bool
 }
+
 
 // Server wraps the gin engine and the resolved config. cmd/server
 // holds one of these and calls Start / Shutdown.
@@ -58,8 +56,45 @@ type Server struct {
 	registry *prometheus.Registry
 }
 
-// Prometheus metrics. Registry is local (not the default global) so
-// re-running tests doesn't accumulate duplicates.
+
+// BuildServerConfig maps configurations.ServerConfig into the
+// server.ServerConfig this package needs. Called from di.
+func BuildServerConfig(cfg configurations.ServerConfig, title ServerTitle, version ServerVersion) ServerConfig {
+	return ServerConfig{
+		Title:              title,
+		Version:            version,
+		Port:               cfg.Port,
+		MaxPayloadSizeKB:   cfg.MaxPayloadSizeKB,
+		TimeoutSeconds:     cfg.TimeoutSeconds,
+		BaseURL:            cfg.BaseURL,
+		ShutdownTimeoutSec: cfg.ShutdownTimeoutSec,
+		CORSAllowedOrigins: parseOrigins(cfg.CORSAllowedOrigins),
+		MetricsEnabled:     cfg.MetricsEnabled,
+	}
+}
+
+
+// parseOrigins turns a comma-separated YAML string into a slice,
+// trimming whitespace and dropping empty entries.
+func parseOrigins(s string) []string {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if t := strings.TrimSpace(p); t != "" {
+			out = append(out, t)
+		}
+	}
+
+	return out
+}
+
+
+// Prometheus metrics. Local registry (not global) so re-running tests
+// doesn't accumulate duplicates.
 var (
 	httpRequestsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "http_requests_total",
@@ -78,113 +113,73 @@ var (
 	})
 )
 
-// NewServer returns the engine, mounts middleware + Swagger, and
+// NewServer builds the engine, mounts middleware + Swagger, and
 // registers every route against the supplied controllers.
 func NewServer(cfg ServerConfig, c *controllers.Controllers) *Server {
-	timeout := 30 * time.Second
-	if cfg.TimeoutSeconds > 0 {
-		timeout = time.Duration(cfg.TimeoutSeconds) * time.Second
+	if cfg.ShutdownTimeoutSec == 0 {
+		cfg.ShutdownTimeoutSec = 25
 	}
+
+	requestTimeout := 30 * time.Second
+	if cfg.TimeoutSeconds > 0 {
+		requestTimeout = time.Duration(cfg.TimeoutSeconds) * time.Second
+	}
+
 	bodyLimit := 4 * 1024 * 1024
 	if cfg.MaxPayloadSizeKB > 0 {
 		bodyLimit = cfg.MaxPayloadSizeKB * 1024
 	}
-	if cfg.ShutdownTimeoutSec == 0 {
-		cfg.ShutdownTimeoutSec = 25
-	}
+
 
 	gin.SetMode(gin.ReleaseMode)
 	app := gin.New()
 
 	// Middleware order matters. requestID first so every later
-	// middleware/log can see the id, then metrics, then the
-	// structured access log, then CORS, then recovery last so a
-	// panic still hits the access log.
+	// middleware/log can see it, then body cap so oversized POSTs
+	// are dropped before any work, then metrics, then access log,
+	// then CORS, then recovery last so a panic still hits the log.
 	app.Use(
 		requestIDMiddleware(),
+		bodyLimitMiddleware(int64(bodyLimit)),
 		metricsMiddleware(),
 		slogRequestLogger(),
 		corsMiddleware(cfg.CORSAllowedOrigins),
-		gin.RecoveryWithWriter(gin.DefaultErrorWriter),
+		recoveryMiddleware(),
 	)
 	app.MaxMultipartMemory = int64(bodyLimit)
 
 	app.NoRoute(func(c *gin.Context) {
-		c.JSON(http.StatusNotFound, gin.H{
-			"successful": false,
-			"error_code": "NOT_FOUND",
-		})
+		c.JSON(http.StatusNotFound, gin.H{"successful": false, "error_code": "NOT_FOUND"})
 	})
 
 	s := &Server{App: app, Config: &cfg, registry: prometheus.NewRegistry()}
 	if cfg.MetricsEnabled {
-		// Register the collectors we just created with this
-		// server's local registry so /metrics exposes them.
 		s.registry.MustRegister(httpRequestsTotal, httpRequestDuration, httpInFlight)
 		app.GET("/metrics", gin.WrapH(promhttp.HandlerFor(s.registry, promhttp.HandlerOpts{})))
 	}
+
 	s.mountSwagger()
 	newHandler(c).register(s.App)
 
+	// ReadHeaderTimeout stops slow-loris. ReadTimeout caps the
+	// whole request including body. WriteTimeout caps the response
+	// so a slow client can't pin a worker. IdleTimeout reaps
+	// keep-alive sockets. MaxHeaderBytes caps the header block.
 	s.httpSrv = &http.Server{
-		Addr:    ":" + cfg.Port,
-		Handler: app,
-		// ReadHeaderTimeout prevents slow-loris from holding a
-		// connection open indefinitely. 5s is a sane default.
+		Addr:              ":" + cfg.Port,
+		Handler:           app,
 		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       requestTimeout + 5*time.Second,
+		WriteTimeout:      requestTimeout + 5*time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    1 << 20,
 	}
 
-	_ = timeout
 	return s
 }
 
-// corsMiddleware turns the configured allowlist into a permissive
-// gin-contrib/cors setup. Empty list = no CORS headers (safer than
-// "allow everything" for an API that is not meant to be called from
-// a browser).
-func corsMiddleware(allowed []string) gin.HandlerFunc {
-	if len(allowed) == 0 {
-		return func(c *gin.Context) { c.Next() }
-	}
-	c := cors.Config{
-		AllowOrigins:     allowed,
-		AllowMethods:     []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", requestIDHeader, "Authorization"},
-		ExposeHeaders:    []string{requestIDHeader},
-		AllowCredentials: true,
-		MaxAge:           12 * time.Hour,
-	}
-	return cors.New(c)
-}
 
-// metricsMiddleware records every request into Prometheus.
-func metricsMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		httpInFlight.Inc()
-		start := time.Now()
-		c.Next()
-		// Use the route pattern, not the raw URL, so /product/abc
-		// and /product/def don't blow up the cardinality.
-		path := c.FullPath()
-		if path == "" {
-			path = "unmatched"
-		}
-		httpRequestsTotal.WithLabelValues(c.Request.Method, path, http.StatusText(c.Writer.Status())).Inc()
-		httpRequestDuration.WithLabelValues(c.Request.Method, path).Observe(time.Since(start).Seconds())
-		httpInFlight.Dec()
-	}
-}
-
-func (s *Server) mountSwagger() {
-	if s.Config.BaseURL == "" {
-		return
-	}
-	s.App.GET("/api-docs/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
-}
-
-// Start blocks until Shutdown is called or the listener errors. The
-// actual net.Listen is done in Shutdown to give us the chance to
-// report the bound address.
+// Start blocks until Shutdown is called or the listener errors.
 func (s *Server) Start() error {
 	addr := s.httpSrv.Addr
 	slog.Info("server.start",
@@ -195,50 +190,27 @@ func (s *Server) Start() error {
 	if err := s.httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
+
 	return nil
 }
 
+
 // Shutdown drains in-flight requests up to the configured timeout.
-// Called from main on SIGINT / SIGTERM. Returns any error from the
-// underlying server.Shutdown so main can log it.
 func (s *Server) Shutdown(ctx context.Context) error {
 	slog.Info("server.shutdown.start", slog.Duration("timeout", time.Duration(s.Config.ShutdownTimeoutSec)*time.Second))
 	if err := s.httpSrv.Shutdown(ctx); err != nil {
 		return err
 	}
+
 	slog.Info("server.shutdown.done")
 	return nil
 }
 
-// corsAllowedOriginsString is a small helper for the config loader
-// to turn a comma-separated string from YAML into a slice.
-func CorsAllowedOriginsFromString(s string) []string {
-	if strings.TrimSpace(s) == "" {
-		return nil
-	}
-	parts := strings.Split(s, ",")
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		if t := strings.TrimSpace(p); t != "" {
-			out = append(out, t)
-		}
-	}
-	return out
-}
 
-// BuildServerConfig maps configurations.ServerConfig into the
-// server.ServerConfig this package needs.
-func BuildServerConfig(cfg configurations.ServerConfig, title ServerTitle, version ServerVersion) ServerConfig {
-	return ServerConfig{
-		Title:              title,
-		Version:            version,
-		Port:               cfg.Port,
-		MaxPayloadSizeKB:    cfg.MaxPayloadSizeKB,
-		TimeoutSeconds:      cfg.TimeoutSeconds,
-		BaseURL:             cfg.BaseURL,
-		ShutdownTimeoutSec:  cfg.ShutdownTimeoutSec,
-		CORSAllowedOrigins:  CorsAllowedOriginsFromString(cfg.CORSAllowedOrigins),
-		MetricsEnabled:     cfg.MetricsEnabled,
+func (s *Server) mountSwagger() {
+	if s.Config.BaseURL == "" {
+		return
 	}
-}
 
+	s.App.GET("/api-docs/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+}

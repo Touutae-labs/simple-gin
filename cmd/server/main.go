@@ -15,6 +15,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"log/slog"
 	"os"
@@ -26,6 +27,8 @@ import (
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
 	"github.com/lmittmann/tint"
+
+	_ "github.com/Touutae-labs/simple-gin/docs" // register the swagger spec via init()
 
 	"github.com/Touutae-labs/simple-gin/internal/configurations"
 	"github.com/Touutae-labs/simple-gin/internal/di"
@@ -41,17 +44,19 @@ func main() {
 	rootCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	slog.SetDefault(slog.New(newLogHandler()))
+	slog.SetDefault(slog.New(server.NewSlogHandler(newLogHandler())))
 
 	cfg, err := loadConfig()
 	if err != nil {
 		log.Fatalf("config: %v", err)
 	}
 
+
 	app, cleanup, err := di.Initialize(cfg, server.ServerTitle(serverName), server.ServerVersion(Version))
 	if err != nil {
 		log.Fatalf("init: %v", err)
 	}
+
 	defer cleanup()
 
 	// Run the HTTP server in a goroutine so we can block on the
@@ -68,6 +73,7 @@ func main() {
 		if err != nil {
 			slog.Error("server.failed_to_start", slog.String("err", err.Error()))
 		}
+
 		// Run cleanup anyway so db handles are released.
 		cleanup()
 		os.Exit(1)
@@ -75,6 +81,7 @@ func main() {
 	case <-rootCtx.Done():
 		slog.Info("signal.received", slog.String("signal", "SIGINT/SIGTERM"))
 	}
+
 
 	// Give in-flight requests a deadline to finish. Anything still
 	// running after ShutdownTimeoutSec gets cut off.
@@ -85,24 +92,32 @@ func main() {
 		slog.Error("server.shutdown_error", slog.String("err", err.Error()))
 	}
 
+
 	cleanup()
 	slog.Info("server.exit_clean")
 }
 
+
 // newLogHandler returns the slog handler for the binary. APP_LOG=json
 // gives structured JSON (production). Anything else gives tinted
-// text (development): colored level, bold key=value pairs.
+// text (development): colored level, bold key=value pairs. APP_LOG_LEVEL
+// overrides the default INFO. A bad level name is surfaced to stderr
+// and ignored — we never refuse to start over a typo.
 func newLogHandler() slog.Handler {
 	level := slog.LevelInfo
 	if v := os.Getenv("APP_LOG_LEVEL"); v != "" {
-		_ = level.UnmarshalText([]byte(v))
+		if err := level.UnmarshalText([]byte(v)); err != nil {
+			fmt.Fprintf(os.Stderr, "ignoring APP_LOG_LEVEL=%q: %v\n", v, err)
+		}
 	}
-	opts := &tint.Options{Level: level, TimeFormat: "15:04:05.000", NoColor: false}
+
 	if strings.EqualFold(os.Getenv("APP_LOG"), "json") {
 		return slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level})
 	}
-	return tint.NewHandler(os.Stdout, opts)
+
+	return tint.NewHandler(os.Stdout, &tint.Options{Level: level, TimeFormat: "15:04:05.000", NoColor: false})
 }
+
 
 func loadConfig() (configurations.Config, error) {
 	var cfg configurations.Config
@@ -110,12 +125,15 @@ func loadConfig() (configurations.Config, error) {
 	if path == "" {
 		path = "config.yml"
 	}
+
 	k := koanf.New(".")
 	if err := k.Load(file.Provider(path), yaml.Parser()); err != nil {
 		return cfg, err
 	}
+
 	if err := k.Unmarshal("", &cfg); err != nil {
 		return cfg, err
 	}
+
 	return cfg, nil
 }

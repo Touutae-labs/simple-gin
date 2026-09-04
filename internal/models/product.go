@@ -26,6 +26,7 @@ type Product struct {
 	DeletedAt   *time.Time // soft delete: nil = live, non-nil = tombstoned
 }
 
+
 // CreateInput is the validated input for creating a product. The
 // controller is responsible for turning the HTTP body into this struct.
 type CreateInput struct {
@@ -35,6 +36,7 @@ type CreateInput struct {
 	Price       Money
 }
 
+
 // PatchInput is a partial update. nil pointer = field not supplied
 // (leave untouched). *string pointing to "" is "explicitly clear".
 type PatchInput struct {
@@ -43,6 +45,7 @@ type PatchInput struct {
 	SalePrice   *Money
 	Price       *Money
 }
+
 
 // ListFilter is the validated query for List. A zero value means
 // "no filter", which behaves the same as before this struct existed
@@ -65,6 +68,7 @@ type ListFilter struct {
 	MaxPrice *Money
 }
 
+
 // ListPage is the structured result of List. Items is the current
 // page; NextCursor is the id to pass back as Cursor to fetch the
 // next page. NextCursor == "" means "no more pages".
@@ -73,12 +77,14 @@ type ListPage struct {
 	NextCursor string
 }
 
+
 // Result wraps the outcome of a mutation. data1 = product id,
 // data2 = product name.
 type Result struct {
 	ProductID string
 	Name      string
 }
+
 
 // Error is a stable, machine-readable error code. Implements the
 // standard `error` interface so it can be returned from any
@@ -89,6 +95,7 @@ type Error struct {
 	Field   string
 	Message string
 }
+
 
 // Error implements the error interface. The string form is just
 // the code so logs don't get noisy.

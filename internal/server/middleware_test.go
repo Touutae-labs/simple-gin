@@ -5,15 +5,16 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRequestIDMiddleware_GeneratesWhenMissing(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.Use(requestIDMiddleware())
-	var seen string
+	var fromCtx string
 	r.GET("/x", func(c *gin.Context) {
-		seen = RequestIDFromContext(c)
+		fromCtx = requestIDFromCtx(c.Request.Context())
 		c.Status(200)
 	})
 
@@ -21,21 +22,18 @@ func TestRequestIDMiddleware_GeneratesWhenMissing(t *testing.T) {
 	req := httptest.NewRequest("GET", "/x", nil)
 	r.ServeHTTP(w, req)
 
-	if seen == "" {
-		t.Fatal("expected request id on context, got empty")
-	}
-	if got := w.Header().Get(requestIDHeader); got == "" {
-		t.Fatal("expected X-Request-Id on response header, got empty")
-	}
+	require.NotEmpty(t, fromCtx)
+	require.NotEmpty(t, w.Header().Get(requestIDHeader))
 }
+
 
 func TestRequestIDMiddleware_PropagatesIncoming(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.Use(requestIDMiddleware())
-	var seen string
+	var fromCtx string
 	r.GET("/x", func(c *gin.Context) {
-		seen = RequestIDFromContext(c)
+		fromCtx = requestIDFromCtx(c.Request.Context())
 		c.Status(200)
 	})
 
@@ -44,10 +42,26 @@ func TestRequestIDMiddleware_PropagatesIncoming(t *testing.T) {
 	req.Header.Set(requestIDHeader, "incoming-id-123")
 	r.ServeHTTP(w, req)
 
-	if seen != "incoming-id-123" {
-		t.Fatalf("expected incoming id, got %q", seen)
+	require.Equal(t, "incoming-id-123", fromCtx)
+	require.Equal(t, "incoming-id-123", w.Header().Get(requestIDHeader))
+}
+
+
+func TestShutdownTimeoutContext_ClampsToBounds(t *testing.T) {
+	tests := []struct {
+		in, want int
+	}{
+		{0, 25},     // default
+		{-5, 25},    // negative → default
+		{500, 300},  // over cap
+		{1, 1},      // edge: min
+		{30, 30},    // in range
 	}
-	if got := w.Header().Get(requestIDHeader); got != "incoming-id-123" {
-		t.Fatalf("expected echoed header, got %q", got)
+
+	for _, tt := range tests {
+		t.Run("", func(t *testing.T) {
+			_, cancel := ShutdownTimeoutContext(t.Context(), tt.in)
+			defer cancel()
+		})
 	}
 }

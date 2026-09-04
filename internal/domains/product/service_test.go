@@ -18,6 +18,7 @@ func newService(t *testing.T) (product.Service, *testhelpers.ProductMemory) {
 	return product.NewService(product.New(), repo), repo
 }
 
+
 func TestService_Create_HappyPath(t *testing.T) {
 	s, _ := newService(t)
 	got, err := s.Create(context.Background(), models.CreateInput{
@@ -29,6 +30,7 @@ func TestService_Create_HappyPath(t *testing.T) {
 	require.Equal(t, "Espresso", got.Name)
 }
 
+
 func TestService_Create_InvalidName(t *testing.T) {
 	s, _ := newService(t)
 	_, err := s.Create(context.Background(), models.CreateInput{
@@ -38,6 +40,7 @@ func TestService_Create_InvalidName(t *testing.T) {
 	require.NotNil(t, err)
 	require.Equal(t, models.CodeInvalidName, err.Code)
 }
+
 
 func TestService_Create_InvalidDescription(t *testing.T) {
 	s, _ := newService(t)
@@ -51,6 +54,7 @@ func TestService_Create_InvalidDescription(t *testing.T) {
 	require.Equal(t, models.CodeInvalidDescription, err.Code)
 }
 
+
 func TestService_Create_InvalidPrice(t *testing.T) {
 	s, _ := newService(t)
 	_, err := s.Create(context.Background(), models.CreateInput{
@@ -60,6 +64,7 @@ func TestService_Create_InvalidPrice(t *testing.T) {
 	require.NotNil(t, err)
 	require.Equal(t, models.CodeInvalidPrice, err.Code)
 }
+
 
 func TestService_Create_RepoError(t *testing.T) {
 	s, repo := newService(t)
@@ -71,6 +76,7 @@ func TestService_Create_RepoError(t *testing.T) {
 	require.NotNil(t, err)
 	require.Equal(t, models.CodeRepositoryFailure, err.Code)
 }
+
 
 func TestService_Patch_HappyPath(t *testing.T) {
 	s, _ := newService(t)
@@ -86,6 +92,7 @@ func TestService_Patch_HappyPath(t *testing.T) {
 	require.Equal(t, "Mug", got.Name)
 }
 
+
 func TestService_Patch_NotFound(t *testing.T) {
 	s, _ := newService(t)
 	price := d("1")
@@ -95,6 +102,7 @@ func TestService_Patch_NotFound(t *testing.T) {
 	require.NotNil(t, err)
 	require.Equal(t, models.CodeProductNotFound, err.Code)
 }
+
 
 func TestService_Patch_InvalidPrice(t *testing.T) {
 	s, _ := newService(t)
@@ -109,6 +117,7 @@ func TestService_Patch_InvalidPrice(t *testing.T) {
 	require.Equal(t, models.CodeInvalidPrice, err.Code)
 }
 
+
 func TestService_Delete_HappyPath(t *testing.T) {
 	s, _ := newService(t)
 	created, _ := s.Create(context.Background(), models.CreateInput{
@@ -122,12 +131,14 @@ func TestService_Delete_HappyPath(t *testing.T) {
 	require.Equal(t, models.CodeProductNotFound, err.Code)
 }
 
+
 func TestService_Delete_NotFound(t *testing.T) {
 	s, _ := newService(t)
 	err := s.Delete(context.Background(), "does-not-exist")
 	require.NotNil(t, err)
 	require.Equal(t, models.CodeProductNotFound, err.Code)
 }
+
 
 func TestService_Delete_Idempotent(t *testing.T) {
 	s, _ := newService(t)
@@ -139,6 +150,7 @@ func TestService_Delete_Idempotent(t *testing.T) {
 	require.Nil(t, s.Delete(context.Background(), created.ProductID))
 }
 
+
 func TestService_List_NoFilter(t *testing.T) {
 	s, _ := newService(t)
 	_, _ = s.Create(context.Background(), models.CreateInput{Name: "A", Price: d("1")})
@@ -147,6 +159,7 @@ func TestService_List_NoFilter(t *testing.T) {
 	require.Nil(t, err)
 	require.Len(t, page.Items, 2)
 }
+
 
 func TestService_List_FilterByName(t *testing.T) {
 	s, _ := newService(t)
@@ -157,6 +170,7 @@ func TestService_List_FilterByName(t *testing.T) {
 	require.Len(t, page.Items, 1)
 	require.Equal(t, "Filter Basket", page.Items[0].Name)
 }
+
 
 func TestService_List_FilterByPriceRange(t *testing.T) {
 	s, _ := newService(t)
@@ -170,12 +184,14 @@ func TestService_List_FilterByPriceRange(t *testing.T) {
 	require.Equal(t, "Mid", page.Items[0].Name)
 }
 
+
 func TestService_List_Pagination(t *testing.T) {
 	s, _ := newService(t)
 	// Insert 5 products, list with limit=2, expect next_cursor set.
 	for _, n := range []string{"A", "B", "C", "D", "E"} {
 		_, _ = s.Create(context.Background(), models.CreateInput{Name: n, Price: d("1")})
 	}
+
 	page, err := s.List(context.Background(), &models.ListFilter{Limit: 2})
 	require.Nil(t, err)
 	require.Len(t, page.Items, 2)
@@ -187,6 +203,7 @@ func TestService_List_Pagination(t *testing.T) {
 	require.Len(t, page2.Items, 2)
 	require.NotEmpty(t, page2.NextCursor)
 }
+
 
 func TestService_List_ExcludesSoftDeleted(t *testing.T) {
 	s, _ := newService(t)
@@ -200,12 +217,14 @@ func TestService_List_ExcludesSoftDeleted(t *testing.T) {
 	require.Equal(t, a.ProductID, page.Items[0].ID)
 }
 
+
 func TestService_List_InvalidLimit(t *testing.T) {
 	s, _ := newService(t)
 	_, err := s.List(context.Background(), &models.ListFilter{Limit: -1})
 	require.NotNil(t, err)
 	require.Equal(t, models.CodeInvalidLimit, err.Code)
 }
+
 
 func TestService_List_InvalidPriceRange(t *testing.T) {
 	s, _ := newService(t)

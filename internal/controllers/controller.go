@@ -11,12 +11,14 @@ type Controllers struct {
 	ProductController *ProductController
 }
 
+
 func NewControllers(health *HealthController, product *ProductController) *Controllers {
 	return &Controllers{
 		HealthController:  health,
 		ProductController: product,
 	}
 }
+
 
 // errorPayload is the shape of every non-2xx response.
 type errorPayload struct {
@@ -25,9 +27,11 @@ type errorPayload struct {
 	Data       any    `json:"data" swaggertype:"object"`
 }
 
+
 func writeError(c *gin.Context, status int, code string) {
 	c.JSON(status, errorPayload{Successful: false, ErrorCode: code, Data: nil})
 }
+
 
 func writeServerError(c *gin.Context) {
 	c.JSON(500, errorPayload{Successful: false, ErrorCode: "INTERNAL_ERROR", Data: nil})

@@ -1,4 +1,4 @@
-.PHONY: install ci test dev wire swag all clean verify
+.PHONY: install ci test dev wire swag mockery arch all clean verify
 
 # Default target: bootstrap, generate, build, test, run.
 # `make` with no args is the same as `make verify` so a fresh clone
@@ -6,10 +6,12 @@
 .DEFAULT_GOAL := verify
 
 # ---- Tools ----------------------------------------------------------------
-# Install the two CLIs the codegen steps need. Idempotent.
+# Install the CLIs the codegen steps need. Idempotent.
 install:
 	go install github.com/google/wire/cmd/wire@latest
 	go install github.com/swaggo/swag/cmd/swag@latest
+	go install github.com/vektra/mockery/v3@latest
+	go install github.com/fe3dback/go-arch-lint@v1.14.0
 	go mod download
 
 # ---- CI -------------------------------------------------------------------
@@ -31,20 +33,41 @@ swag:
 wire:
 	wire ./internal/di
 
+# Generate testify mocks for every interface under
+# internal/domains and internal/repositories. Config in
+# .mockery.yaml matches the POS project layout. Output goes
+# to internal/mocks/<package>/<interface>_mock.go and is
+# committed to the repo (these are the test doubles, not
+# throwaway build artifacts).
+mockery:
+	mockery
+
+# Architecture check. Two layers of enforcement:
+#   1. .go-arch-lint.yml → import boundary graph (run by
+#      cmd/archcheck/main_test.go, which fails the build on
+#      any violation).
+#   2. cmd/archcheck/tagrule_test.go → struct-tag location
+#      (gorm only in repositories, json only in controllers,
+#      koanf only in configurations, wire only in di).
+# Both run as part of `go test ./cmd/archcheck/...` which is
+# picked up by the `test` target below.
+arch:
+	go test -count=1 ./cmd/archcheck/...
+
 # ---- Dev ------------------------------------------------------------------
 # dev depends on swag + wire so `make dev` on a fresh clone just
 # works. The build target depends on the same so `go build` isn't
 # called before the generated files exist.
-dev: swag wire
+dev: swag wire mockery
 	go run ./cmd/server
 
 # ---- Full from-scratch verification --------------------------------------
 # Everything: install tools, generate, lint, test, build, run a
 # dry-run smoke against /healthz. Safe to run on a clean checkout
 # with no Postgres — DB tests will skip with a clear message.
-verify: install swag wire lint build smoke
+verify: install swag wire mockery arch lint build smoke
 
-build: swag wire
+build: swag wire mockery arch
 	go build -o /tmp/simple-gin-build-check ./cmd/server
 	@rm -f /tmp/simple-gin-build-check
 	@echo "build OK"
@@ -73,5 +96,6 @@ smoke:
 clean:
 	rm -f docs/docs.go docs/swagger.json docs/swagger.yaml
 	rm -f internal/di/wire_gen.go
+	rm -rf internal/mocks
 	rm -f /tmp/simple-gin-build-check
 	rm -f /tmp/simple-gin-smoke.pid

@@ -1,0 +1,93 @@
+version: 3
+workdir: internal
+allow:
+  depOnAnyVendor: false
+excludeFiles:
+  - "^.*_test\\.go$"
+  - "^.*/mocks/.*$"
+
+# Components = the layers. Each maps to one or more Go packages.
+# "models" is in commonComponents because every layer imports the
+# shared value types.
+components:
+  models:
+    in: models/**
+  controllers:
+    in: controllers/**
+  di:
+    in: di/**
+  domains:
+    in: domains/**
+  repositories:
+    in: repositories/**
+  configurations:
+    in: configurations/**
+  testhelpers:
+    in: testhelpers/**
+  server:
+    in: server/**
+
+# Vendor allowlist. server is the only layer that talks directly
+# to HTTP frameworks, observability, and the generated swagger spec.
+# Every other layer is HTTP-framework-agnostic, so each gets
+# anyVendorDeps: true (vendor imports unrestricted, but project
+# imports are checked by the deps graph).
+vendors:
+  swagger-docs:
+    in:
+      - "github.com/Touutae-labs/simple-gin/docs"
+  gin:
+    in: github.com/gin-gonic/gin
+  cors:
+    in: github.com/gin-contrib/cors
+  uuid:
+    in: github.com/google/uuid
+  prometheus:
+    in: github.com/prometheus/client_golang/**
+  decimal:
+    in: github.com/shopspring/decimal
+  swaggo-files:
+    in: github.com/swaggo/files
+  swaggo-gin-swagger:
+    in: github.com/swaggo/gin-swagger
+
+# Controllers and middleware import gin too — but they only see
+# gin.Context, not the engine. We allow gin via the gin vendor
+# entry above.
+
+commonComponents:
+  - models
+
+# Dependency rules. Each key is a component name; mayDependOn lists
+# the components it may import. Anything not declared here is a violation.
+# Dependency rules. Each key is a component name; mayDependOn lists
+# the components it may import. Anything not declared here is a violation.
+# "models" and "configurations" are leaves — listed in commonComponents
+# or imported only by their direct consumers, so they have no
+# outgoing project edges to declare.
+#
+# anyVendorDeps: true on every layer means "vendor (third-party)
+# imports are unrestricted per-component" — the project boundary
+# is the only thing we're enforcing. Switch to canUse lists if
+# you want to lock down specific third-party deps per layer.
+deps:
+  models:
+    anyVendorDeps: true
+  controllers:
+    mayDependOn: [models, domains, server]
+    canUse: [gin, decimal]
+  di:
+    mayDependOn: [controllers, domains, repositories, server, configurations, testhelpers, models]
+    anyVendorDeps: true
+  domains:
+    mayDependOn: [models]
+    anyVendorDeps: true
+  repositories:
+    mayDependOn: [models, domains]
+    anyVendorDeps: true
+  testhelpers:
+    mayDependOn: [models, domains]
+    anyVendorDeps: true
+  server:
+    mayDependOn: [controllers, configurations, models]
+    canUse: [swagger-docs, gin, cors, uuid, prometheus, swaggo-files, swaggo-gin-swagger]

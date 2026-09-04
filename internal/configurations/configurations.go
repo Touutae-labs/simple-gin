@@ -15,6 +15,7 @@ type ServerConfig struct {
 	MetricsEnabled      bool   `koanf:"metrics_enabled"`
 }
 
+
 type DatabaseConfig struct {
 	Host        string `koanf:"host"`
 	Port        int    `koanf:"port"`
@@ -25,12 +26,14 @@ type DatabaseConfig struct {
 	AutoMigrate bool   `koanf:"auto_migrate"`
 }
 
+
 // DSN returns the libpq-style connection string consumed by both pgx
 // (via stdlib) and gorm.io/driver/postgres when DriverName=pgx.
 func (d DatabaseConfig) DSN() string {
 	return fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
 		d.Host, d.Port, d.User, d.Password, d.DBName, d.SSLMode)
 }
+
 
 type Config struct {
 	Server   ServerConfig   `koanf:"server"`

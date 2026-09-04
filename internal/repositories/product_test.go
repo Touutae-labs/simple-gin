@@ -23,8 +23,10 @@ func defaultDSN() string {
 	if v := os.Getenv("TEST_DATABASE_URL"); v != "" {
 		return v
 	}
+
 	return "host=localhost user=postgres password=postgres dbname=simple_gin_test port=5432 sslmode=disable"
 }
+
 
 func newTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
@@ -35,12 +37,15 @@ func newTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Skipf("skipping integration test: cannot connect to Postgres: %v", err)
 	}
+
 	if err := db.AutoMigrate(repositories.AllModels()...); err != nil {
 		t.Fatalf("automigrate: %v", err)
 	}
+
 	require.NoError(t, db.Exec("TRUNCATE products").Error)
 	return db
 }
+
 
 func d(s string) decimal.Decimal { return decimal.RequireFromString(s) }
 
@@ -65,12 +70,14 @@ func TestProduct_CreateGet(t *testing.T) {
 	require.True(t, got.Price.Equal(d("29.90")))
 }
 
+
 func TestProduct_GetByID_NotFound(t *testing.T) {
 	db := newTestDB(t)
 	repo := repositories.NewProduct(db)
 	_, err := repo.GetByID(context.Background(), "00000000-0000-0000-0000-000000000000")
-	require.ErrorIs(t, err, repositories.ErrNotFound)
+	require.ErrorIs(t, err, product.ErrNotFound)
 }
+
 
 func TestProduct_Patch_Partial(t *testing.T) {
 	db := newTestDB(t)
@@ -91,6 +98,7 @@ func TestProduct_Patch_Partial(t *testing.T) {
 	require.True(t, got.Price.Equal(d("12.50")))
 }
 
+
 func TestProduct_Patch_NullDescription(t *testing.T) {
 	db := newTestDB(t)
 	repo := repositories.NewProduct(db)
@@ -109,17 +117,15 @@ func TestProduct_Patch_NullDescription(t *testing.T) {
 	require.Nil(t, got.Description)
 }
 
+
 func TestProduct_Patch_NotFound(t *testing.T) {
 	db := newTestDB(t)
 	repo := repositories.NewProduct(db)
 	_, err := repo.Patch(context.Background(), "00000000-0000-0000-0000-000000000000", models.PatchInput{
 		Price: decimalPtr(d("1")),
 	})
-	require.ErrorIs(t, err, repositories.ErrNotFound)
+	require.ErrorIs(t, err, product.ErrNotFound)
 }
 
-func decimalPtr(v decimal.Decimal) *decimal.Decimal { return &v }
 
-// Reference product.ErrNotFound so the test file fails the build if
-// the sentinel is renamed.
-var _ = product.ErrNotFound
+func decimalPtr(v decimal.Decimal) *decimal.Decimal { return &v }
