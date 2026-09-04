@@ -195,7 +195,14 @@ func (m *ProductMemory) Patch(_ context.Context, id string, in models.PatchInput
 	}
 
 	if in.Description != nil {
-		p.Description = in.Description
+		// *string pointing to "" means "explicit clear" — same
+		// convention the GORM adapter encodes via nilIfEmpty.
+		if *in.Description == "" {
+			p.Description = nil
+		} else {
+			d := *in.Description
+			p.Description = &d
+		}
 	}
 
 	if in.SalePrice != nil {
