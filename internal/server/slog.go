@@ -6,14 +6,9 @@ import (
 )
 
 // NewSlogHandler wraps inner so every record carries the per-request
-// id read from ctx. Used by the request logger and by anything that
-// logs through slog inside a request — controllers' bind errors,
-// repo errors, panic stacks — all show up with the same correlation
-// id as the access log line.
-//
-// Implemented as a Handler (not a Handler middleware) so it sits
-// at the bottom of the chain: cheaper than a wrapper that allocates
-// a new attr slice on every Enabled() call.
+// id read from ctx. Without it, every controller / repo / panic
+// log would have to re-add the id by hand, and one would eventually
+// be missed.
 func NewSlogHandler(inner slog.Handler) slog.Handler {
 	return &ctxRequestIDHandler{inner: inner}
 }
