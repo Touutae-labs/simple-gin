@@ -14,8 +14,9 @@ import (
 type Service interface {
 	Create(ctx context.Context, in models.CreateInput) (models.Result, *models.Error)
 	Get(ctx context.Context, id string) (*models.Product, *models.Error)
-	List(ctx context.Context) ([]models.Product, *models.Error)
+	List(ctx context.Context, f *models.ListFilter) (*models.ListPage, *models.Error)
 	Patch(ctx context.Context, id string, in models.PatchInput) (models.Result, *models.Error)
+	Delete(ctx context.Context, id string) *models.Error
 }
 
 type serviceImpl struct {
@@ -31,7 +32,7 @@ func NewService(mod Module, repo Repository) Service {
 }
 
 func (s *serviceImpl) Create(ctx context.Context, in models.CreateInput) (models.Result, *models.Error) {
-	if err := s.mod.ValidateCreate(in.Name, in.Price); err != nil {
+	if err := s.mod.ValidateCreate(in.Name, in.Description, in.Price); err != nil {
 		return models.Result{}, err
 	}
 	id, err := s.repo.Create(ctx, in)
@@ -64,8 +65,14 @@ func (s *serviceImpl) Get(ctx context.Context, id string) (*models.Product, *mod
 	return p, nil
 }
 
-func (s *serviceImpl) List(ctx context.Context) ([]models.Product, *models.Error) {
-	items, err := s.repo.List(ctx)
+func (s *serviceImpl) List(ctx context.Context, f *models.ListFilter) (*models.ListPage, *models.Error) {
+	if f == nil {
+		f = &models.ListFilter{}
+	}
+	if err := s.mod.ValidateListFilter(f); err != nil {
+		return nil, err
+	}
+	page, err := s.repo.List(ctx, f)
 	if err != nil {
 		slog.ErrorContext(ctx, "product.list.repo_error", "err", err.Error())
 		return nil, &models.Error{
@@ -73,11 +80,11 @@ func (s *serviceImpl) List(ctx context.Context) ([]models.Product, *models.Error
 			Message: "failed to list products",
 		}
 	}
-	return items, nil
+	return page, nil
 }
 
 func (s *serviceImpl) Patch(ctx context.Context, id string, in models.PatchInput) (models.Result, *models.Error) {
-	if err := s.mod.ValidatePatch(in.Name, in.Price); err != nil {
+	if err := s.mod.ValidatePatch(in.Name, in.Description, in.Price); err != nil {
 		return models.Result{}, err
 	}
 	updated, err := s.repo.Patch(ctx, id, in)
@@ -96,4 +103,22 @@ func (s *serviceImpl) Patch(ctx context.Context, id string, in models.PatchInput
 		}
 	}
 	return models.Result{ProductID: updated.ID, Name: updated.Name}, nil
+}
+
+func (s *serviceImpl) Delete(ctx context.Context, id string) *models.Error {
+	if err := s.repo.SoftDelete(ctx, id); err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return &models.Error{
+				Code:    models.CodeProductNotFound,
+				Field:   "id",
+				Message: fmt.Sprintf("product %s not found", id),
+			}
+		}
+		slog.ErrorContext(ctx, "product.delete.repo_error", "id", id, "err", err.Error())
+		return &models.Error{
+			Code:    models.CodeRepositoryFailure,
+			Message: "failed to delete product",
+		}
+	}
+	return nil
 }

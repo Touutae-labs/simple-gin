@@ -6,10 +6,13 @@ package configurations
 import "fmt"
 
 type ServerConfig struct {
-	Port             string `koanf:"port"`
-	MaxPayloadSizeKB int    `koanf:"max_payload_size_kb"`
-	TimeoutSeconds   int    `koanf:"timeout_seconds"`
-	BaseURL          string `koanf:"base_url"`
+	Port                string `koanf:"port"`
+	MaxPayloadSizeKB    int    `koanf:"max_payload_size_kb"`
+	TimeoutSeconds      int    `koanf:"timeout_seconds"`
+	BaseURL             string `koanf:"base_url"`
+	ShutdownTimeoutSec  int    `koanf:"shutdown_timeout_sec"`
+	CORSAllowedOrigins  string `koanf:"cors_allowed_origins"`
+	MetricsEnabled      bool   `koanf:"metrics_enabled"`
 }
 
 type DatabaseConfig struct {

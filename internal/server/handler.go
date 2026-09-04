@@ -29,5 +29,6 @@ func (h *Handler) register(app *gin.Engine) {
 		products.POST("", h.Controllers.ProductController.Create)
 		products.GET("/:id", h.Controllers.ProductController.Get)
 		products.PATCH("/:id", h.Controllers.ProductController.Patch)
+		products.DELETE("/:id", h.Controllers.ProductController.Delete)
 	}
 }

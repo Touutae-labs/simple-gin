@@ -3,6 +3,9 @@ server:
   max_payload_size_kb: 4096
   timeout_seconds: 30
   base_url: "http://localhost:8080"
+  shutdown_timeout_sec: 25
+  cors_allowed_origins: ""
+  metrics_enabled: true
 
 database:
   host: "localhost"

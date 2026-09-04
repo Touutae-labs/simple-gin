@@ -2,6 +2,15 @@
 // from APP_CONFIG (default: ./config.yml). Log format: APP_LOG=json
 // forces JSON, anything else (including unset) is the colored tint
 // text handler for dev.
+//
+// Lifecycle:
+//   1. Load config + set up logging
+//   2. Run DI initialization (db, repos, services, controllers, engine)
+//   3. Start the HTTP server in a goroutine
+//   4. Block on a SIGINT/SIGTERM context
+//   5. On signal: ask the server to Shutdown with a deadline, drain
+//      in-flight requests, then exit. In-flight requests get up to
+//      server.shutdown_timeout_sec to finish before the process dies.
 package main
 
 import (
@@ -13,10 +22,10 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/lmittmann/tint"
 	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
+	"github.com/lmittmann/tint"
 
 	"github.com/Touutae-labs/simple-gin/internal/configurations"
 	"github.com/Touutae-labs/simple-gin/internal/di"
@@ -29,7 +38,7 @@ var Version = "dev"
 const serverName = "simple-gin"
 
 func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	rootCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	slog.SetDefault(slog.New(newLogHandler()))
@@ -45,16 +54,39 @@ func main() {
 	}
 	defer cleanup()
 
+	// Run the HTTP server in a goroutine so we can block on the
+	// signal context here and then trigger a graceful shutdown.
+	serverErrCh := make(chan error, 1)
 	go func() {
-		<-ctx.Done()
-		slog.Info("shutdown requested")
-		cleanup()
-		os.Exit(0)
+		slog.Info("server.starting")
+		serverErrCh <- app.Server.Start()
 	}()
 
-	if err := app.Server.Start(); err != nil {
-		log.Fatalf("server: %v", err)
+	select {
+	case err := <-serverErrCh:
+		// Start() returned on its own (e.g. port already in use).
+		if err != nil {
+			slog.Error("server.failed_to_start", slog.String("err", err.Error()))
+		}
+		// Run cleanup anyway so db handles are released.
+		cleanup()
+		os.Exit(1)
+		return
+	case <-rootCtx.Done():
+		slog.Info("signal.received", slog.String("signal", "SIGINT/SIGTERM"))
 	}
+
+	// Give in-flight requests a deadline to finish. Anything still
+	// running after ShutdownTimeoutSec gets cut off.
+	shutdownCtx, cancelShutdown := server.ShutdownTimeoutContext(rootCtx, cfg.Server.ShutdownTimeoutSec)
+	defer cancelShutdown()
+
+	if err := app.Server.Shutdown(shutdownCtx); err != nil {
+		slog.Error("server.shutdown_error", slog.String("err", err.Error()))
+	}
+
+	cleanup()
+	slog.Info("server.exit_clean")
 }
 
 // newLogHandler returns the slog handler for the binary. APP_LOG=json

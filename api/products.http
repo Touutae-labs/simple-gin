@@ -1,17 +1,20 @@
 # simple-gin smoke test. nvim + kulala.nvim.
 # {{host}} from @host below. <Space>ra sends all, <Space>rr sends one.
-# Captures use a post-request script (> {% %}) which stores the id
-# in client.global under the name "product_id". Later blocks read
-# it back with {{product_id}}.
+# Capture scripts use client.global.set to write the id into
+# {{product_id}}, which is read by the GET / PATCH / DELETE blocks.
 
 @host = http://localhost:8080
 
-### Health check
+### 0) Health check
 GET {{host}}/healthz
 
 ### 1) Create a product — captures {{product_id}} from data.data1
 POST {{host}}/product
 Content-Type: application/json
+
+> {%
+  client.global.set("product_id", response.body.data.data1);
+%}
 
 {
   "name": "Espresso Beans 1kg",
@@ -20,30 +23,38 @@ Content-Type: application/json
   "price": 29.90
 }
 
+### 2) Create a minimal product — overwrites {{product_id}}
+POST {{host}}/product
+Content-Type: application/json
+
 > {%
   client.global.set("product_id", response.body.data.data1);
 %}
-
-### 2) Create a minimal product — overwrites {{product_id}} with the new id
-POST {{host}}/product
-Content-Type: application/json
 
 {
   "name": "Plain Mug",
   "price": 9.99
 }
 
-> {%
-  client.global.set("product_id", response.body.data.data1);
-%}
-
-### 3) List all products (sanity check the DB has data)
+### 3) List products, no filter — paginated response
 GET {{host}}/product
 
-### 4) Get by id — {{product_id}} from #2 fills in
+### 4) List products, limit 1 — exercises pagination cursor
+GET {{host}}/product?limit=1
+
+### 5) List products, filter by name (case-insensitive contains)
+GET {{host}}/product?name=espresso
+
+### 6) List products, filter by price range
+GET {{host}}/product?min_price=10&max_price=100
+
+### 7) List products, combined filter + pagination
+GET {{host}}/product?name=espresso&limit=10
+
+### 8) Get by id — uses {{product_id}}
 GET {{host}}/product/{{product_id}}
 
-### 5) Patch by id — change only the price
+### 9) Patch by id — change only the price
 PATCH {{host}}/product/{{product_id}}
 Content-Type: application/json
 
@@ -51,7 +62,7 @@ Content-Type: application/json
   "price": 31.50
 }
 
-### 6) Patch by id — null out description and sale_price (explicit clear)
+### 10) Patch by id — null out description and sale_price
 PATCH {{host}}/product/{{product_id}}
 Content-Type: application/json
 
@@ -60,7 +71,7 @@ Content-Type: application/json
   "sale_price": null
 }
 
-### 7) Patch by id — invalid (negative price), expect 422 INVALID_PRICE
+### 11) Patch by id — invalid (negative price), expect 422 INVALID_PRICE
 PATCH {{host}}/product/{{product_id}}
 Content-Type: application/json
 
@@ -68,10 +79,39 @@ Content-Type: application/json
   "price": -1
 }
 
-### 8) Patch a non-existent id, expect 404 PRODUCT_NOT_FOUND
+### 12) Patch by id — invalid (name too long > 200 chars), expect 422 INVALID_NAME
+PATCH {{host}}/product/{{product_id}}
+Content-Type: application/json
+
+{
+  "name": "this is a very long name that exceeds the two hundred character limit imposed by the module to keep query indexes happy and to prevent the persistence of multi-megabyte string payloads in a single column of the products table this is the end"
+}
+
+### 13) List with invalid limit (limit=999), expect 422 INVALID_LIMIT
+GET {{host}}/product?limit=999
+
+### 14) List with invalid price range (min > max), expect 422 INVALID_PRICE_RANGE
+GET {{host}}/product?min_price=100&max_price=10
+
+### 15) Get by id — non-existent, expect 404 PRODUCT_NOT_FOUND
+GET {{host}}/product/00000000-0000-0000-0000-000000000000
+
+### 16) Delete by id — soft delete, expect 204
+DELETE {{host}}/product/{{product_id}}
+
+### 17) Get by id after delete — expect 404 (soft-deleted is invisible)
+GET {{host}}/product/{{product_id}}
+
+### 18) Delete by id again — idempotent, expect 204
+DELETE {{host}}/product/{{product_id}}
+
+### 19) Patch a non-existent id, expect 404 PRODUCT_NOT_FOUND
 PATCH {{host}}/product/00000000-0000-0000-0000-000000000000
 Content-Type: application/json
 
 {
   "price": 1
 }
+
+### 20) Prometheus metrics — expect text/plain
+GET {{host}}/metrics
